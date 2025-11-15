@@ -1,0 +1,6 @@
+{
+  "name": "conch-ui",
+  "tree": {
+    "$path": "dist"
+  }
+}

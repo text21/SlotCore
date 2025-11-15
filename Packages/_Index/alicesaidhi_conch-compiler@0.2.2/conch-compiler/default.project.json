@@ -1,0 +1,6 @@
+{
+  "name": "conch-compiler",
+  "tree": {
+    "$path": "dist"
+  }
+}

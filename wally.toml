@@ -1,0 +1,16 @@
+[package]
+name = "akira/slotcore"
+version = "0.1.0"
+registry = "https://github.com/UpliftGames/wally-index"
+realm = "shared"
+license = "MIT"
+description = "Multi-slot save framework"
+
+[dependencies]
+Promise = "evaera/promise@4.0.0"
+Signal = "sleitnick/signal@2.0.3"
+Comm = "sleitnick/comm@1.0.1"
+TableUtil = "sleitnick/table-util@1.2.0"
+Trove = "sleitnick/trove@1.0.0"
+conch = "alicesaidhi/conch@0.2.3"
+conch_ui = "alicesaidhi/conch-ui@0.2.3"

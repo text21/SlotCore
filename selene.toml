@@ -1,0 +1,11 @@
+std = "roblox"
+allow_undefined_variables = false
+allow_undefined_globals = false
+
+[rules]
+empty_if = "Error"
+if_same_then_else = "Error"
+undefined_variable = "Error"
+undefined_global = "Error"
+lowercase_global = "Warning"
+multiple_statements = "Warning"

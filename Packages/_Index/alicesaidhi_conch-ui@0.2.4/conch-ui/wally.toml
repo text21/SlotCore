@@ -1,0 +1,18 @@
+[dependencies]
+ast = "alicesaidhi/conch-ast@0.2.1"
+conch = "alicesaidhi/conch@0.2.4"
+vide = "centau/vide@^0.3.1"
+
+[package]
+exclude = [
+    "pesde.toml",
+    "pesde.lock",
+    "src",
+    "roblox_packages",
+    "luau_packages",
+]
+include = ["/dist"]
+name = "alicesaidhi/conch-ui"
+realm = "shared"
+registry = "https://github.com/UpliftGames/wally-index"
+version = "0.2.4"

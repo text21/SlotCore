@@ -1,0 +1,6 @@
+{
+  "name": "conch-ast",
+  "tree": {
+    "$path": "dist"
+  }
+}

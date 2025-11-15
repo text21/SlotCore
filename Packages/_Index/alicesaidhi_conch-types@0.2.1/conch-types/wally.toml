@@ -1,0 +1,15 @@
+[dependencies]
+
+[package]
+exclude = [
+    "pesde.toml",
+    "pesde.lock",
+    "src",
+    "roblox_packages",
+    "luau_packages",
+]
+include = ["/dist"]
+name = "alicesaidhi/conch-types"
+realm = "shared"
+registry = "https://github.com/UpliftGames/wally-index"
+version = "0.2.1"
