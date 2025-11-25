@@ -221,7 +221,6 @@ function SlotStoreClass:_makeHandle(userId: number, slotId: SlotId, data: SlotDa
 			end
 		end
 
-		-- Run beforeSave middleware on a copy to avoid partial mutation on error
 		local beforeList = (store._middleware :: any).beforeSave
 		if beforeList then
 			local tempHandle = { Data = TableUtil.Copy(handle.Data), Meta = TableUtil.Copy(handle.Meta) }
@@ -231,7 +230,6 @@ function SlotStoreClass:_makeHandle(userId: number, slotId: SlotId, data: SlotDa
 				return false, nil, "MIDDLEWARE_ERROR"
 			end
 
-			-- apply the mutated copy
 			handle.Data = tempHandle.Data
 			handle.Meta = tempHandle.Meta
 			slot.data = handle.Data
