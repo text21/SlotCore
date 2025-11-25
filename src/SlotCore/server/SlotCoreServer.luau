@@ -3,6 +3,7 @@
 local SlotCore = require(script.Parent.Parent)
 local NetServer = require(script.Parent.Parent.net.NetServer)
 local ConchAdmin = require(script.Parent.ConchAdmin)
+local Logger = require(script.Parent.Parent.Logger)
 
 local Server = {}
 
@@ -14,7 +15,7 @@ function Server.CreateStore(name: string, config)
 		ConchAdmin.init(name, store, config)
 	end)
 	if not ok then
-		warn("[SlotCore] Conch admin init failed for store '", name, "': ", err)
+		Logger.warn("Conch admin init failed for store", name, err)
 	end
 
 	return store

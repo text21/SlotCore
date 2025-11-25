@@ -9,6 +9,7 @@ local Packages = ReplicatedStorage:WaitForChild("Packages")
 local Signal = require(Packages.Signal)
 local TableUtil = require(Packages.TableUtil)
 local Trove = require(Packages.Trove)
+local Logger = require(script.Parent.Logger)
 
 local types = require(script.Parent.SlotTypes)
 local DataLayer = require(script.Parent.DataLayer)
@@ -65,8 +66,24 @@ local function runMiddleware(list: { (ctx: any, ...any) -> () }?, ctx: any, ...:
 		return
 	end
 	for _, fn in ipairs(list) do
-		fn(ctx, ...)
+		local ok, err = pcall(fn, ctx, ...)
+		if not ok then
+			Logger.warn("Middleware error:", tostring(err))
+		end
 	end
+end
+
+local function runMiddlewareAbort(list: { (ctx: any, ...any) -> () }?, ctx: any, ...: any)
+	if not list then
+		return true
+	end
+	for _, fn in ipairs(list) do
+		local ok, err = pcall(fn, ctx, ...)
+		if not ok then
+			return false, tostring(err)
+		end
+	end
+	return true
 end
 
 local function newSessionToken(): string
@@ -204,7 +221,22 @@ function SlotStoreClass:_makeHandle(userId: number, slotId: SlotId, data: SlotDa
 			end
 		end
 
-		runMiddleware((store._middleware :: any).beforeSave, ctx, handle, doc)
+		-- Run beforeSave middleware on a copy to avoid partial mutation on error
+		local beforeList = (store._middleware :: any).beforeSave
+		if beforeList then
+			local tempHandle = { Data = TableUtil.Copy(handle.Data), Meta = TableUtil.Copy(handle.Meta) }
+			local okMid, midErr = runMiddlewareAbort(beforeList, ctx, tempHandle, doc)
+			if not okMid then
+				Logger.warn("beforeSave middleware failed:", midErr)
+				return false, nil, "MIDDLEWARE_ERROR"
+			end
+
+			-- apply the mutated copy
+			handle.Data = tempHandle.Data
+			handle.Meta = tempHandle.Meta
+			slot.data = handle.Data
+			slot.meta = handle.Meta
+		end
 
 		local validators = (store._validators :: any)
 		if validators then

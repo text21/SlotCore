@@ -9,7 +9,8 @@ local AdminConfig = require(script.Parent.AdminConfig)
 type SlotStore = types.SlotStore
 type SlotSummary = types.SlotSummary
 
-local conch: any = require(ReplicatedStorage.Packages.conch)
+local Logger = require(script.Parent.Parent.Logger)
+local conch = nil
 
 local ConchAdmin = {}
 
@@ -35,6 +36,17 @@ function ConchAdmin.init(storeName: string, store: SlotStore, rawConfig: any)
 	if not AdminConfig.Enabled then
 		return
 	end
+
+	local ok, mod = pcall(function()
+		return require(ReplicatedStorage.Packages.conch)
+	end)
+
+	if not ok or not mod then
+		Logger.warn("Conch package not available; admin commands disabled for store", storeName)
+		return
+	end
+
+	conch = mod
 
 	conch.initiate_default_lifecycle()
 	conch.register_default_commands()
@@ -170,7 +182,7 @@ function ConchAdmin.init(storeName: string, store: SlotStore, rawConfig: any)
 					return
 				end
 
-				print("[SlotCore] Full document for", targetPlayer.Name, doc)
+				Logger.info("Full document for", targetPlayer.Name, doc)
 				conch.log("info", "Printed full document to server Output.")
 			end,
 		})
@@ -239,18 +251,21 @@ function ConchAdmin.init(storeName: string, store: SlotStore, rawConfig: any)
 		})
 	end
 
-	-- set <player> <field> <value>
+		-- set <player> <field> <value>
 	if AdminConfig.Commands.set then
 		conch.register("set", {
-			description = "Set any SlotCore field",
+			description = "Set any SlotCore field on a player's active slot.",
 			permissions = { "slotcore.modify" },
 			arguments = function()
 				return
 					conch.args.player("player", "Target player"),
-					conch.args.string("field", "Field name"),
+					conch.args.string("field", "Field name (e.g. coins)"),
 					conch.args.string("value", "Value (number or string)")
 			end,
 			callback = function(targetPlayer: Player, field: string, value: string)
+				local numeric = tonumber(value)
+				local newValue: any = numeric or value
+
 				local handle = store:GetLoadedSlot(targetPlayer)
 				if not handle then
 					local firstSlot =
@@ -261,17 +276,16 @@ function ConchAdmin.init(storeName: string, store: SlotStore, rawConfig: any)
 						firstSlot,
 						{ createIfMissing = true }
 					)
+
 					if not ok or not h then
 						conch.log("error", "set failed to load slot: " .. tostring(err))
 						return
 					end
+
 					handle = h
 				end
 
 				local data = handle.Data
-				local numeric = tonumber(value)
-				local newValue: any = numeric or value
-
 				data[field] = newValue
 
 				local ok, _, err = handle:SaveAsync()
@@ -293,7 +307,7 @@ function ConchAdmin.init(storeName: string, store: SlotStore, rawConfig: any)
 		})
 	end
 
-	print("[SlotCore] Conch admin commands registered for store '" .. storeName .. "'")
+	Logger.info("Conch admin commands registered for store '" .. storeName .. "'")
 end
 
 return ConchAdmin

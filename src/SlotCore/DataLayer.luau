@@ -17,6 +17,9 @@ DataLayer.__index = DataLayer
 
 local SESSION_LOCK_ERR = "SlotCore::SessionLocked"
 
+-- Public error constant consumers can check against
+DataLayer.SESSION_LOCKED = "SESSION_LOCKED"
+
 local function withRetries<T>(fn: () -> AdapterResult<T>, maxRetries: number?): AdapterResult<T>
     local tries = maxRetries or 5
     local lastErr: string? = nil

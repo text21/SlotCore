@@ -4,6 +4,10 @@ local AdminConfig = {}
 
 AdminConfig.Enabled = true
 
+-- When true, running in Studio will use a separate datastore name/scope (suffixed with `_dev`) so developers
+-- don't interfere with production data. Toggle this in your game's copy of AdminConfig.
+AdminConfig.UseDevDataInStudio = true
+
 AdminConfig.RolePermissions = {
     slotcore_mod = {
         "slotcore.view",
@@ -20,7 +24,6 @@ AdminConfig.RolePermissions = {
 }
 
 AdminConfig.UserRoles = {
-    -- [123456789] = { "slotcore_admin" },
     [797399348] = { "slotcore_admin" },
 }
 

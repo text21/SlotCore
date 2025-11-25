@@ -5,6 +5,7 @@ local Packages = ReplicatedStorage:WaitForChild("Packages")
 
 local Comm = require(Packages.Comm)
 local ServerComm = Comm.ServerComm
+local Logger = require(script.Parent.Parent.Logger)
 
 local types = require(script.Parent.Parent.SlotTypes)
 type SlotStore = types.SlotStore
@@ -24,7 +25,7 @@ function NetServer.bind(storeName: string, store: SlotStore)
     serverComm:BindFunction("GetSlots", function(player: Player): { SlotSummary }?
         local ok, list, err = store:ListSlotsAsync(player.UserId)
         if not ok or not list then
-            warn("[SlotCore]", "GetSlots failed for", player, err)
+            Logger.warn("GetSlots failed for", player, err)
             return nil
         end
         return list
@@ -33,7 +34,7 @@ function NetServer.bind(storeName: string, store: SlotStore)
     serverComm:BindFunction("LoadSlot", function(player: Player, slotId: string): boolean
         local ok, _slot, err = store:LoadSlotAsync(player, slotId, { createIfMissing = true })
         if not ok then
-            warn("[SlotCore]", "LoadSlot failed for", player, slotId, err)
+            Logger.warn("LoadSlot failed for", player, slotId, err)
         end
         return ok
     end)

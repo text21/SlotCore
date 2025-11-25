@@ -447,6 +447,19 @@ Commands (if enabled in AdminConfig):
 - `add <player> <field> <amount>` – add to a numeric field
 - `set <player> <field> <value>` – set any field
 
+**Session Locking and Errors**
+
+SlotCore uses a session lock to prevent multiple servers from modifying a player's document concurrently. When a session conflict occurs the DataLayer returns the constant string `SESSION_LOCKED`. Consumers should treat this as a transient error and retry with backoff. Example strategy:
+
+- Wait 100–500ms and retry up to a few times.
+- If you repeatedly see `SESSION_LOCKED`, log and surface to ops — it often indicates another server or task is holding the session.
+
+The `DataLayer` module exposes `DataLayer.SESSION_LOCKED` which you can check against when handling adapter errors.
+
+**Admin integration is opt-in**
+
+For safety, admin console integration is disabled by default in the shipped `AdminConfig`.
+
 Client mount (F4 by default):
 
 ```lua
