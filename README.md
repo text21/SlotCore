@@ -1,6 +1,7 @@
 # SlotCore
 
-Multi-slot save framework for Roblox.
+Hello Developers, I have a made Multi-slot save framework for Roblox.
+
 Session-safe, adapter-style, with middleware, migrations, leaderstats, admin console, and global leaderboards.
 
 > **Goal:** A drop-in data framework that works for _every_ game – simulators, RPGs, FPS, tycoons, story games – without forcing a specific architecture.
@@ -19,6 +20,20 @@ Session-safe, adapter-style, with middleware, migrations, leaderstats, admin con
 - **Global stats / offline leaderboards** via OrderedDataStore
 - **Conch admin integration** for in-game data inspection & editing
 - **Client net layer** (Comm) for slot lists and loading from the client
+
+---
+
+### Installation
+
+You can either:
+
+- **Import the `.rbxm`** (attached below), or
+- **Install from GitHub / Wally** (see repository for setup)
+
+RBXM: _[SlotCore.rbxm|attachment](upload://RFStEY1pTaE63rQo47QPcBolyL.rbxm) (183.9 KB)_
+
+GitHub:
+https://github.com/text21/SlotCore
 
 ---
 
@@ -473,3 +488,67 @@ conch.initiate_default_lifecycle()
 ui.mount(conch)
 ui.bind_to(Enum.KeyCode.F4)
 ```
+
+---
+
+### FAQ
+
+Q: Why should I use SlotCore instead of ProfileService?
+A: ProfileService is great, but it’s focused on “one profile per player”. SlotCore is built around multi-slot saves from the start and adds a few things on top:
+
+- Config-driven multi-slot (1, 2, 3, …) with summaries and meta
+- Built-in middleware and validators so you can plug in anti-exploit / data rules without scattering checks everywhere
+- Achievements / hooks (LevelUp, AchievementUnlocked, StatChanged) baked into the save pipeline
+- Session locking + retry logic inside the DataLayer instead of DIY
+- First-class leaderstats binder and global stats service (offline leaderboards)
+
+If you just need a single profile and are already deep into ProfileService, that’s fine. SlotCore is aimed at games that want multiple slots, strong validation, and tooling out of the box.
+
+Q: Can I use SlotCore without Conch?
+A: Yes. Conch integration is completely optional and controlled by AdminConfig. If you don’t want any in-game cmds:
+
+- just set `AdminConfig.Enabled = false`
+- The store, middleware, migrations, validators, leaderboards, etc. all work without Conch.
+
+Q: Does SlotCore replace my existing framework (Knit, GameCore, custom systems)?
+A: No. SlotCore is data-layer only. It doesn’t care whether you use Knit, GameCore, Aero, custom OOP, or no framework at all. You just:
+
+- Require SlotCoreServer on the server
+- Wire whatever systems you want to the store and handle.Data
+- Think of it as “data backend” you plug your systems into.
+
+Q: Can I migrate existing data into SlotCore?
+A: Yes. That’s what migrations are for. You can:
+
+- Start with version = 1 and write a migration that reshapes your old datastore schema into SlotCore’s document format, or
+- Import once via a script that reads your old keys and writes SlotCore documents, then keep future changes in migrations.
+- The idea is: no mass wipes when you add or change fields.
+
+Q: Is it safe to use in bigger games / multiple servers per player?
+A: SlotCore uses session locking to avoid two servers writing the same document at once. When a conflict happens, the DataLayer returns a special SESSION_LOCKED error and the framework retries with backoff internally. You can also check this constant yourself if you write custom adapters or tooling.
+
+Q: Does SlotCore support offline / global leaderboards?
+A: Yes. GlobalStatsService sits on top of SlotCore and uses OrderedDataStore:
+
+- It listens to saves and pushes the selected fields (coins, level, kills, etc.) into ordered keys
+- You can query with GetTopAsync to build global or mode-specific leaderboards, even when the player is offline.
+
+Q: How many slots can I safely use per player?
+A: SlotCore is flexible – you configure maxSlots and allowedSlotIds. In practice most games stick to 3–5 slots to keep document size and DataStore throughput reasonable. The framework itself doesn’t hard-limit you, but Roblox’s DataStore limits still apply.
+
+Q: Can I turn pieces off if I don’t need them (validators, achievements, leaderboards)?
+A: Yes. Everything is opt-in:
+
+- Leave validators, achievementRules, or middleware out of the config to disable them
+- Don’t require GlobalStatsService if you don’t want global leaderboards
+- Disable admin commands per-command in AdminConfig.Commands
+
+---
+
+## Contributing
+
+Thanks for checking out SlotCore — contributions are welcome!
+
+- Report bugs or request features: open an issue at https://github.com/text21/SlotCore
+
+Every contribution helps — thank you!
