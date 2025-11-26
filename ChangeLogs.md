@@ -8,8 +8,7 @@ All notable changes to SlotCore are documented in this file.
 
 - Pluggable persistence adapters: `MemoryAdapter`, `FileAdapter` (Studio offline JSON), and `MirrorAdapter` (best-effort mirror writes to a secondary DataStore).
 - Dev-grade crypto adapter: `CryptoAdapter` (XOR/JSON obfuscator) for testing.
-- Production-style crypto wrapper: `CryptoAdapterAES` - will use a proper AES provider in `ReplicatedStorage.Packages.AES` when present, otherwise falls back to dev adapter.
-- `CRYPTO.md` documentation with guidance for key management and migration.
+- Production-style crypto wrapper: `CryptoAdapterAES`
 - `WebhookLogger` and `MetricsExporter` adapters for structured log forwarding and in-memory metrics collection.
 - `BadgeIntegration` and `DevProductIntegration` modules for easy wiring of achievements and dev-product handlers to SlotCore stores.
 - `SlotSelect` client UI module - a small built-in slot selection screen that fires a RemoteEvent.
@@ -30,7 +29,7 @@ All notable changes to SlotCore are documented in this file.
 
 ### Migration notes
 
-- If you enable `secureFields` or switch to a crypto adapter in `DataLayer`, provide migration functions to encrypt existing plaintext fields. See `CRYPTO.md` for guidance.
+- If you enable `secureFields` or switch to a crypto adapter in `DataLayer`, provide migration functions to encrypt existing plaintext fields.
 - If you have custom `MarketplaceService.ProcessReceipt` handlers, integrate them with `DevProductIntegration` carefully because SlotCore's helper sets `ProcessReceipt` when bound; prefer composing handlers in your own code.
 
 ### Security & Ops
