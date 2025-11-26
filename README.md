@@ -123,7 +123,7 @@ local store = SlotCoreServer.CreateStore("Main", {
 Notes:
 
 - `secureFields` is an array of field names; `DataLayer` will call `encrypt` before writing and `decrypt` after reading for each named field (both on `account` and per-slot `data`).
-- `CryptoAdapterAES` is a wrapper that looks for a vetted AES implementation in `ReplicatedStorage.Packages.AES`. If none is found it falls back to the dev adapter and logs a warning. See `src/SlotCore/adapters/CRYPTO.md` for guidance on secure key management and migrations.
+- `CryptoAdapterAES` is a wrapper that looks for a vetted AES implementation in `ReplicatedStorage.Packages.AES`. If none is found it falls back to the dev adapter and logs a warning.
 
 ### Logger + metrics wiring
 
