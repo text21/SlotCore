@@ -9,7 +9,6 @@ Version: 1.1 - Released 2025-11-26
 Highlights (v1.1) (Release version is still useable)
 
 - Pluggable persistence adapters: `MemoryAdapter`, `FileAdapter` (Studio JSON), and `MirrorAdapter`.
-- Encryption hooks + dev and AES-wrapper adapters (`CryptoAdapter`, `CryptoAdapterAES`).
 - Webhook logging and a simple metrics exporter adapter.
 - Badge and DevProduct integration helpers.
 - Test harness improvements and a small client `SlotSelect` UI module.
@@ -109,21 +108,9 @@ local store = SlotCoreServer.CreateStore("Main", {
 })
 ```
 
-2. Provide a production `cryptoAdapter` that exposes `encrypt(value)` and `decrypt(cipher)` methods (recommended):
-
-```lua
-local AESAdapter = require(ReplicatedStorage.SlotCore.adapters.CryptoAdapterAES).new({ key = os.getenv("MY_AES_KEY") })
-local store = SlotCoreServer.CreateStore("Main", {
-	dataStoreName = "MyDS",
-	cryptoAdapter = AESAdapter,
-	secureFields = { "email", "ssn" },
-})
-```
-
 Notes:
 
 - `secureFields` is an array of field names; `DataLayer` will call `encrypt` before writing and `decrypt` after reading for each named field (both on `account` and per-slot `data`).
-- `CryptoAdapterAES` is a wrapper that looks for a vetted AES implementation in `ReplicatedStorage.Packages.AES`. If none is found it falls back to the dev adapter and logs a warning.
 
 ### Logger + metrics wiring
 
