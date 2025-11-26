@@ -90,6 +90,135 @@ net:LoadSlotAsync("1")
 
 ---
 
+## Advanced Examples
+
+Below are a few focused examples you can copy into your game to wire the new features introduced in v1.1.
+
+### Crypto adapter configuration
+
+DataLayer supports two ways to enable field encryption:
+
+1. Provide a simple `cryptoKey` (dev use) — DataLayer will create the dev obfuscation adapter automatically:
+
+```lua
+local store = SlotCoreServer.CreateStore("Main", {
+	dataStoreName = "MyDS",
+	-- dev-safe obfuscation adapter will be created from this key
+	cryptoKey = "dev-only-key-123",
+	secureFields = { "email", "ssn" },
+})
+```
+
+2. Provide a production `cryptoAdapter` that exposes `encrypt(value)` and `decrypt(cipher)` methods (recommended):
+
+```lua
+local AESAdapter = require(ReplicatedStorage.SlotCore.adapters.CryptoAdapterAES).new({ key = os.getenv("MY_AES_KEY") })
+local store = SlotCoreServer.CreateStore("Main", {
+	dataStoreName = "MyDS",
+	cryptoAdapter = AESAdapter,
+	secureFields = { "email", "ssn" },
+})
+```
+
+Notes:
+
+- `secureFields` is an array of field names; `DataLayer` will call `encrypt` before writing and `decrypt` after reading for each named field (both on `account` and per-slot `data`).
+- `CryptoAdapterAES` is a wrapper that looks for a vetted AES implementation in `ReplicatedStorage.Packages.AES`. If none is found it falls back to the dev adapter and logs a warning. See `src/SlotCore/adapters/CRYPTO.md` for guidance on secure key management and migrations.
+
+### Logger + metrics wiring
+
+You can register custom sinks with `Logger.registerAdapter(name, fn)`. Example wiring `WebhookLogger` and `MetricsExporter`:
+
+```lua
+local Logger = require(ReplicatedStorage.SlotCore.Logger)
+local WebhookImpl = require(ReplicatedStorage.SlotCore.loggers.WebhookLogger)
+local MetricsImpl = require(ReplicatedStorage.SlotCore.loggers.MetricsExporter)
+
+local webhook = WebhookImpl.new({ url = "https://hooks.example.com/push", authHeader = "Bearer token" })
+local metrics = MetricsImpl.new({ flushFn = function(k,v) print("FLUSH", k, v) end })
+
+-- Adapter that forwards Level+Message to webhook and increments a counter
+Logger.registerAdapter("webhook", function(level, msg)
+	webhook:log(level, msg, { source = "SlotCore" })
+	metrics:inc("logs_total")
+end)
+
+-- Example: increment saves counter on store save
+store.SlotSaved:Connect(function(player, handle)
+	metrics:inc("saves")
+end)
+
+-- Read values from the metrics exporter anywhere in your server tools
+local counters = metrics:getCounters()
+print("Saves so far:", counters["saves"])
+```
+
+Notes:
+
+- `WebhookLogger` uses `HttpService:PostAsync`; ensure HTTP requests are enabled for your place and endpoints are trusted.
+- `MetricsExporter` is a small in-memory collector; replace `flushFn` with an external push to Prometheus/Datadog or your own telemetry endpoint for production.
+
+### DevProductIntegration — composing `ProcessReceipt` safely
+
+Roblox allows a single `MarketplaceService.ProcessReceipt` function. To avoid stomping other handlers, compose yours with any existing handler like this:
+
+```lua
+local MarketplaceService = game:GetService("MarketplaceService")
+local existing = MarketplaceService.ProcessReceipt
+
+local function makeCompositeHandler(store, handlers)
+	-- handlers: map productId -> function(playerId, receipt, store) -> boolean (granted)
+	return function(receiptInfo)
+		local productId = receiptInfo.ProductId or receiptInfo.PurchaseId
+		local playerId = receiptInfo.PlayerId
+
+		local granted = false
+		local handler = handlers[productId]
+		if handler then
+			local ok, res = pcall(function() return handler(playerId, receiptInfo, store) end)
+			if ok and res then
+				granted = true
+			end
+		end
+
+		-- call existing handler if present (preserve behavior)
+		if existing then
+			local ok2, decision = pcall(function() return existing(receiptInfo) end)
+			if ok2 and decision == Enum.ProductPurchaseDecision.PurchaseGranted then
+				granted = true
+			end
+		end
+
+		if granted then
+			return Enum.ProductPurchaseDecision.PurchaseGranted
+		end
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+end
+
+-- Usage
+local DevProductIntegration = require(ReplicatedStorage.SlotCore.integrations.DevProductIntegration)
+local handlers = {
+	[123456] = function(userId, receipt, store)
+		-- give 100 coins to the buyer
+		local player = game:GetService("Players"):GetPlayerByUserId(userId)
+		if player then
+			store:IncrementAsync(player, "coins", 100)
+			return true
+		end
+		return false
+	end,
+}
+
+MarketplaceService.ProcessReceipt = makeCompositeHandler(store, handlers)
+```
+
+Notes:
+
+- `DevProductIntegration.Bind` in `src/SlotCore/integrations/DevProductIntegration.luau` provides a simple binding; the example above shows how to compose handlers so you don't overwrite other code that uses `ProcessReceipt`.
+
+---
+
 ### Core Concepts
 
 ### Stores
