@@ -29,7 +29,7 @@ All notable changes to SlotCore are documented in this file.
 
 ### Migration notes
 
-- If you enable `secureFields` or switch to a crypto adapter in `DataLayer`, provide migration functions to encrypt existing plaintext fields. See `CRYPTO.md` for guidance.
+- If you enable `secureFields` or switch to a crypto adapter in `DataLayer`, provide migration functions to encrypt existing plaintext fields.
 - If you have custom `MarketplaceService.ProcessReceipt` handlers, integrate them with `DevProductIntegration` carefully because SlotCore's helper sets `ProcessReceipt` when bound; prefer composing handlers in your own code.
 
 ### Security & Ops
