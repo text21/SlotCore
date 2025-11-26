@@ -1,25 +1,32 @@
 # SlotCore
 
-Hello Developers, I have a made Multi-slot save framework for Roblox.
+SlotCore is a production-minded multi-slot data framework for Roblox. It provides session-safe, adapter-driven persistence with middleware, validators, achievements, leaderboards, and optional admin tooling.
 
-Session-safe, adapter-style, with middleware, migrations, leaderstats, admin console, and global leaderboards.
+Goal: A drop-in data backend that works for simulators, RPGs, tycoons, story games, and more - without forcing a specific game architecture.
 
-> **Goal:** A drop-in data framework that works for _every_ game – simulators, RPGs, FPS, tycoons, story games – without forcing a specific architecture.
+Version: 1.1 - Released 2025-11-26
 
----
+Highlights (v1.1) (Release version is still useable)
 
-## ✨ Features
+- Pluggable persistence adapters: `MemoryAdapter`, `FileAdapter` (Studio JSON), and `MirrorAdapter`.
+- Encryption hooks + dev and AES-wrapper adapters (`CryptoAdapter`, `CryptoAdapterAES`).
+- Webhook logging and a simple metrics exporter adapter.
+- Badge and DevProduct integration helpers.
+- Test harness improvements and a small client `SlotSelect` UI module.
+- Default autosave (15s) with configurable interval; leaderboards improvements and on-demand rank lookup.
 
-- **Multi-slot saves** out of the box (`1`, `2`, `3`, …)
-- **Session locking** to prevent double-servers from corrupting data
-- **Migrations** so you can ship updates without wiping players
-- **Middleware pipeline** (`beforeLoad`, `afterLoad`, `beforeSave`, `afterSave`)
-- **Validators** (anti-exploit, rate-limit checks, data sanity)
-- **Achievements & hooks** (`AchievementUnlocked`, `LevelUp`, `StatChanged`)
-- **Leaderstats binder** – automatic PlayerList stats from SlotCore data
-- **Global stats / offline leaderboards** via OrderedDataStore
-- **Conch admin integration** for in-game data inspection & editing
-- **Client net layer** (Comm) for slot lists and loading from the client
+## Core Features
+
+- Multi-slot saves out of the box (`1`, `2`, `3`, …)
+- Session locking to prevent concurrent server write conflicts
+- Adapter-based persistence (DataLayer, MemoryAdapter, FileAdapter, MirrorAdapter)
+- Migrations to evolve document shape without wipes
+- Middleware pipeline (`beforeLoad`, `afterLoad`, `beforeSave`, `afterSave`)
+- Validators (anti-exploit, rate-limit checks, data sanity)
+- Achievements & hooks (`AchievementUnlocked`, `LevelUp`, `StatChanged`)
+- Leaderstats binder + GlobalStatsService (ordered datastore leaderboards)
+- Optional Conch admin integration for in-game inspection & editing
+- Test harness helpers for local/session testing
 
 ---
 
@@ -39,222 +46,46 @@ https://github.com/text21/SlotCore
 
 ### Quickstart
 
-### Server
+Server snippet (abridged):
 
 ```lua
--- ServerScriptService.MainServer
-
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
 local SlotCoreServer = require(ReplicatedStorage.SlotCore.server.SlotCoreServer)
 local LeaderstatsBinder = require(ReplicatedStorage.SlotCore.server.LeaderstatsBinder)
 local GlobalStatsService = require(ReplicatedStorage.SlotCore.server.GlobalStatsService)
 
 local store = SlotCoreServer.CreateStore("Main", {
 	maxSlots = 3,
-
-	slotTemplate = {
-		coins = 0,
-		level = 1,
-		xp = 0,
-		kills = 0,
-		inventory = {},
-	},
-
+	slotTemplate = { coins = 0, level = 1, xp = 0, kills = 0 },
 	version = 2,
-
-	migrations = {
-		[2] = function(doc)
-			local d: any = doc
-			for _, slot in pairs(d.slots) do
-				slot.data.kills = slot.data.kills or 0
-				slot.data.xp = slot.data.xp or 0
-			end
-		end,
-	},
-
-	validators = {
-		{
-			name = "NoNegativeCoins",
-			validate = function(ctx, handle)
-				local c = handle.Data.coins or 0
-				if c < 0 then
-					return false, "coins < 0"
-				end
-				return true
-			end,
-		},
-
-		(function()
-			local lastCoins: { [number]: number } = {}
-
-			return {
-				name = "CoinsMaxDelta",
-				validate = function(ctx, handle)
-					local userId = ctx.userId
-					local current = handle.Data.coins or 0
-					local prev = lastCoins[userId]
-
-					if prev == nil then
-						lastCoins[userId] = current
-						return true
-					end
-
-					local delta = current - prev
-					local maxDeltaPerSave = 100_000
-
-					if delta > maxDeltaPerSave then
-						return false, string.format("coins delta too large: %d", delta)
-					end
-
-					lastCoins[userId] = current
-					return true
-				end,
-			}
-		end)(),
-
-		{
-			name = "XPNonNegative",
-			validate = function(ctx, handle)
-				local xp = handle.Data.xp or 0
-				if xp < 0 then
-					return false, "xp < 0"
-				end
-				return true
-			end,
-		},
-	},
-
-	achievementRules = {
-		{
-			id = "FirstBlood",
-			check = function(handle)
-				return (handle.Data.kills or 0) >= 1
-			end,
-		},
-		{
-			id = "Wealthy",
-			check = function(handle)
-				return (handle.Data.coins or 0) >= 100_000
-			end,
-		},
-		{
-			id = "Millionaire",
-			check = function(handle)
-				return (handle.Data.coins or 0) >= 1_000_000
-			end,
-		},
-	},
-
-	middleware = {
-		beforeLoad = {
-			function(ctx, doc)
-				local d: any = doc
-				local slot = d.slots[ctx.slotId]
-				if slot then
-					slot.data.coins = slot.data.coins or 0
-					slot.data.level = slot.data.level or 1
-					slot.data.xp = slot.data.xp or 0
-					slot.data.kills = slot.data.kills or 0
-				end
-			end,
-		},
-
-		beforeSave = {
-			function(ctx, handle)
-				if handle.Data.coins and handle.Data.coins < 0 then
-					handle.Data.coins = 0
-				end
-				if handle.Data.level and handle.Data.level < 1 then
-					handle.Data.level = 1
-				end
-			end,
-		},
-
-		afterSave = {
-			function(ctx, handle)
-				local xp = handle.Data.xp or 0
-				local level = handle.Data.level or 1
-				local xpPerLevel = 100
-
-				if xp < 0 then xp = 0 end
-
-				while xp >= xpPerLevel do
-					xp -= xpPerLevel
-					level += 1
-				end
-
-				handle.Data.xp = xp
-				handle.Data.level = level
-			end,
-		},
-	},
+	-- migrations, validators, middleware, achievements omitted for brevity
 })
 
 LeaderstatsBinder.Bind(store, {
-	Coins = function(handle)
-		return handle.Data.coins or 0
-	end,
-	Level = function(handle)
-		return handle.Data.level or 1
-	end,
-	Kills = function(handle)
-		return handle.Data.kills or 0
-	end,
+	Coins = function(handle) return handle.Data.coins or 0 end,
+	Level = function(handle) return handle.Data.level or 1 end,
+	Kills = function(handle) return handle.Data.kills or 0 end,
 })
 
 GlobalStatsService.Bind(store, {
-	Coins = function(handle)
-		return handle.Data.coins or 0
-	end,
-
-	Level = function(handle)
-		return handle.Data.level or 1
-	end,
-
-	Kills = function(handle)
-		return handle.Data.kills or 0
-	end,
-}, {
-	prefix = "SlotCore_Main",
-})
-
-store.LevelUp:Connect(function(player, handle, oldLevel, newLevel)
-	print("[SlotCore] Level up:", player.Name, oldLevel, "→", newLevel)
-end)
+	Coins = function(handle) return handle.Data.coins or 0 end,
+	Level = function(handle) return handle.Data.level or 1 end,
+}, { prefix = "SlotCore_Main" })
 
 store.AchievementUnlocked:Connect(function(player, handle, id)
-	print("[SlotCore] Achievement:", player.Name, id)
-end)
-
-store.ExploitFlagged:Connect(function(player, slotId, validatorName, reason)
-	warn("[SlotCore] Exploit flagged:", player.Name, slotId, validatorName, reason)
+	print("Achievement:", player.Name, id)
 end)
 ```
 
-### Client
+Client snippet (abridged):
 
 ```lua
--- StarterPlayerScripts.MainClient
-
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
 local SlotCoreClient = require(ReplicatedStorage.SlotCore.client.SlotCoreClient)
-require(ReplicatedStorage.SlotCore.client.ConchUIInit) -- optional, F4 console
-
 local net = SlotCoreClient.ForStore("Main")
 
-task.spawn(function()
-	local slots = net:GetSlotsAsync()
-	print("Slots:", slots)
-
-	net.SlotLoaded:Connect(function(slotId, meta)
-		print("Slot loaded client-side:", slotId, meta and meta.level)
-	end)
-
-	net:LoadSlotAsync("1")
-end)
-
+local slots = net:GetSlotsAsync()
+net:LoadSlotAsync("1")
 ```
 
 ---
@@ -467,7 +298,7 @@ Commands (if enabled in AdminConfig):
 SlotCore uses a session lock to prevent multiple servers from modifying a player's document concurrently. When a session conflict occurs the DataLayer returns the constant string `SESSION_LOCKED`. Consumers should treat this as a transient error and retry with backoff. Example strategy:
 
 - Wait 100–500ms and retry up to a few times.
-- If you repeatedly see `SESSION_LOCKED`, log and surface to ops — it often indicates another server or task is holding the session.
+- If you repeatedly see `SESSION_LOCKED`, log and surface to ops - it often indicates another server or task is holding the session.
 
 The `DataLayer` module exposes `DataLayer.SESSION_LOCKED` which you can check against when handling adapter errors.
 
@@ -547,8 +378,8 @@ A: Yes. Everything is opt-in:
 
 ## Contributing
 
-Thanks for checking out SlotCore — contributions are welcome!
+Thanks for checking out SlotCore - contributions are welcome!
 
 - Report bugs or request features: open an issue at https://github.com/text21/SlotCore
 
-Every contribution helps — thank you!
+Every contribution helps - thank you!

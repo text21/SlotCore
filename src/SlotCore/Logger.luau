@@ -5,6 +5,7 @@ local Logger = {}
 local enabled = true
 local prefix = "[SlotCore]"
 local conch_log = nil
+local adapters = {}
 
 function Logger.setEnabled(e)
     enabled = e
@@ -16,6 +17,16 @@ end
 
 function Logger.setConch(c)
     conch_log = c
+end
+
+function Logger.registerAdapter(name, fn)
+    adapters[name] = fn
+end
+
+local function callAdapters(level, msg)
+    for name, fn in pairs(adapters) do
+        pcall(fn, level, msg)
+    end
 end
 
 local function format(...)
@@ -37,6 +48,7 @@ function Logger.debug(...)
     else
         print(prefix, msg)
     end
+    pcall(function() callAdapters("debug", prefix .. " " .. msg) end)
 end
 
 function Logger.info(...)
@@ -49,6 +61,7 @@ function Logger.info(...)
     else
         print(prefix, msg)
     end
+    pcall(function() callAdapters("info", prefix .. " " .. msg) end)
 end
 
 function Logger.warn(...)
@@ -61,6 +74,7 @@ function Logger.warn(...)
     else
         warn(prefix, msg)
     end
+    pcall(function() callAdapters("warn", prefix .. " " .. msg) end)
 end
 
 function Logger.error(...)
@@ -73,6 +87,7 @@ function Logger.error(...)
     else
         warn(prefix, msg)
     end
+    pcall(function() callAdapters("error", prefix .. " " .. msg) end)
 end
 
 return Logger

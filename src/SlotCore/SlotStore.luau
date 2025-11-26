@@ -95,7 +95,12 @@ function SlotStoreClass.new(name: string, config: SlotConfig): SlotStore
 
 	self.Name = name
 	self._cfg = config
-	self._data = DataLayer.new(config)
+
+    if type((config :: any).dataAdapter) == "table" and type((config :: any).dataAdapter.AcquireSessionAsync) == "function" then
+		self._data = (config :: any).dataAdapter
+	else
+		self._data = DataLayer.new(config)
+	end
 	self._trove = Trove.new()
 
 	self._documents = {} :: { [number]: Document }
@@ -118,12 +123,26 @@ function SlotStoreClass.new(name: string, config: SlotConfig): SlotStore
 	self.AchievementUnlocked = Signal.new()
 	self.ExploitFlagged = Signal.new()
 
-	if config.autoSaveInterval and config.autoSaveInterval > 0 then
+	self._stats = {
+		saves = 0,
+		sessionLockHits = 0,
+		validationFailures = 0,
+	}
+
+	self._quarantineCounts = {}
+
+	local autoInterval = config.autoSaveInterval
+	if autoInterval == nil then
+		autoInterval = 15
+	end
+	if autoInterval and autoInterval > 0 then
 		self._trove:Add(task.spawn(function()
 			while true do
-				task.wait(config.autoSaveInterval)
+				task.wait(autoInterval)
 				for _, plr in ipairs(Players:GetPlayers()) do
-					self:SavePlayerAsync(plr)
+					pcall(function()
+						self:SavePlayerAsync(plr)
+					end)
 				end
 			end
 		end))
@@ -253,6 +272,22 @@ function SlotStoreClass:_makeHandle(userId: number, slotId: SlotId, data: SlotDa
 						store.ExploitFlagged:Fire(ctx.player, slotId, vName, reasonStr)
 					end
 
+					if store._stats then
+						store._stats.validationFailures = (store._stats.validationFailures or 0) + 1
+					end
+
+					store._quarantineCounts[userId] = (store._quarantineCounts[userId] or 0) + 1
+					local threshold = (store._cfg and store._cfg.quarantineThreshold) or 3
+					if store._quarantineCounts[userId] >= threshold then
+						local d: any = doc
+						d.account = d.account or {}
+						d.account.quarantined = true
+						pcall(function()
+							local token = store:_getSessionToken(userId)
+							store._data:SaveDocumentAsync(userId, token, d)
+						end)
+					end
+
 					return false, nil, "VALIDATION_FAILED: " .. vName
 				end
 			end
@@ -265,6 +300,12 @@ function SlotStoreClass:_makeHandle(userId: number, slotId: SlotId, data: SlotDa
 
 		local ok, _, err = store._data:SaveDocumentAsync(userId, token, doc)
 		if not ok then
+
+            if err == "SESSION_LOCKED" or err == DataLayer.SESSION_LOCKED then
+				if store._stats then
+					store._stats.sessionLockHits = (store._stats.sessionLockHits or 0) + 1
+				end
+			end
 			return false, nil, err
 		end
 
@@ -297,6 +338,10 @@ function SlotStoreClass:_makeHandle(userId: number, slotId: SlotId, data: SlotDa
 		end
 
 		handle._snapshot = TableUtil.Copy(handle.Data)
+
+		if store._stats then
+			store._stats.saves = (store._stats.saves or 0) + 1
+		end
 
 		return true, nil, nil
 	end
@@ -447,6 +492,78 @@ end
 
 function SlotStoreClass:DebugPeekDocumentAsync(userId: number): AdapterResult<Document>
 	return self._data:PeekDocumentAsync(userId)
+end
+
+function SlotStoreClass:_ensureLoadedHandleForPlayer(player: Player)
+	local handle = self:GetLoadedSlot(player)
+	if handle then
+		return true, handle
+	end
+	local firstSlot = (self._cfg.allowedSlotIds and self._cfg.allowedSlotIds[1]) or "1"
+	local ok, h, err = self:LoadSlotAsync(player, firstSlot, { createIfMissing = true })
+	if not ok or not h then
+		return false, nil, err
+	end
+	return true, h, nil
+end
+
+function SlotStoreClass:IncrementAsync(player: Player, field: string, amount: number)
+	local ok, handle, err = self:_ensureLoadedHandleForPlayer(player)
+	if not ok then
+		return false, nil, err
+	end
+	local current = handle.Data[field]
+	if current == nil then current = 0 end
+	if type(current) ~= "number" then
+		return false, nil, "Field is not numeric"
+	end
+	handle.Data[field] = current + amount
+	return handle:SaveAsync()
+end
+
+function SlotStoreClass:SetAsync(player: Player, field: string, value: any)
+	local ok, handle, err = self:_ensureLoadedHandleForPlayer(player)
+	if not ok then
+		return false, nil, err
+	end
+	handle.Data[field] = value
+	return handle:SaveAsync()
+end
+
+function SlotStoreClass:GetAsync(player: Player, field: string)
+	local handle = self:GetLoadedSlot(player)
+	if not handle then
+		return nil
+	end
+	return handle.Data[field]
+end
+
+function SlotStoreClass:RenameSlotAsync(player: Player, slotId: SlotId, displayName: string)
+	local ok, doc, err = self:_ensureDocument(player)
+	if not ok or not doc then
+		return false, nil, err
+	end
+	local d: any = doc
+	d.slots = d.slots or {}
+	d.slots[slotId] = d.slots[slotId] or { data = {}, meta = {} }
+	d.slots[slotId].meta = d.slots[slotId].meta or {}
+	d.slots[slotId].meta.displayName = displayName
+	local token = self._sessionTokens[player.UserId]
+	if not token then return false, nil, "No active session" end
+	local okS, _, errS = self._data:SaveDocumentAsync(player.UserId, token, doc)
+	return okS, nil, errS
+end
+
+function SlotStoreClass:SetSlotImageAsync(player: Player, slotId: SlotId, assetId: string)
+	return self:RenameSlotAsync(player, slotId, nil) -- reuse meta structure
+end
+
+function SlotStoreClass:GetStats()
+	return {
+		saves = (self._stats and self._stats.saves) or 0,
+		sessionLockHits = (self._stats and self._stats.sessionLockHits) or 0,
+		validationFailures = (self._stats and self._stats.validationFailures) or 0,
+	}
 end
 
 return SlotStoreClass

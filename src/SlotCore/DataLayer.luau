@@ -54,6 +54,17 @@ function DataLayer.new(config: SlotConfig)
     self._ds = DataStoreService:GetDataStore(config.dataStoreName :: string, config.scope)
     self._sessionTTL = (config :: any).sessionTTL or 120
     self._migrations = (config :: any).migrations or {} :: { [number]: MigrationFn }
+    self._crypto = (config :: any).cryptoAdapter
+    if not self._crypto and (config :: any).cryptoKey then
+        local ok, adapter = pcall(function()
+            return require(script.Parent.adapters.CryptoAdapter).new((config :: any).cryptoKey)
+        end)
+        if ok then
+            self._crypto = adapter
+        end
+    end
+    self._chaos = (config :: any).chaosMode or false
+    self._chaosChance = (config :: any).chaosChance or 0.1
     return self
 end
 
@@ -79,6 +90,54 @@ function DataLayer:_applyMigrations(doc: Document)
     (doc :: any).version = currentVersion
 end
 
+local function encryptFields(self, doc)
+    local crypto = self._crypto
+    local fields = (self._cfg :: any).secureFields or {}
+    if not crypto or #fields == 0 then return end
+    local d: any = doc
+    d.account = d.account or {}
+    for _, f in ipairs(fields) do
+        if type(f) == "string" then
+            local accVal = d.account[f]
+            if accVal ~= nil and crypto.encrypt then
+                d.account[f] = crypto.encrypt(accVal)
+            end
+            for slotId, slot in pairs(d.slots or {}) do
+                slot.data = slot.data or {}
+                local v = slot.data[f]
+                if v ~= nil and crypto.encrypt then
+                    slot.data[f] = crypto.encrypt(v)
+                end
+            end
+        end
+    end
+end
+
+local function decryptFields(self, doc)
+    local crypto = self._crypto
+    local fields = (self._cfg :: any).secureFields or {}
+    if not crypto or #fields == 0 then return end
+    local d: any = doc
+    d.account = d.account or {}
+    for _, f in ipairs(fields) do
+        if type(f) == "string" then
+            local accVal = d.account[f]
+            if accVal ~= nil and crypto.decrypt then
+                local ok, dec = pcall(crypto.decrypt, accVal)
+                if ok then d.account[f] = dec end
+            end
+            for slotId, slot in pairs(d.slots or {}) do
+                slot.data = slot.data or {}
+                local v = slot.data[f]
+                if v ~= nil and crypto.decrypt then
+                    local ok, dec = pcall(crypto.decrypt, v)
+                    if ok then slot.data[f] = dec end
+                end
+            end
+        end
+    end
+end
+
 function DataLayer:AcquireSessionAsync(userId: number, sessionToken: string): AdapterResult<Document>
     local cfg = self._cfg
     local ttl = self._sessionTTL
@@ -91,7 +150,6 @@ function DataLayer:AcquireSessionAsync(userId: number, sessionToken: string): Ad
                 if not doc then
                     doc = newDocument(cfg)
                 end
-
                 local session = doc.session
                 if session and session.token ~= sessionToken then
                     local lastSeen = session.lastSeen or 0
@@ -100,12 +158,20 @@ function DataLayer:AcquireSessionAsync(userId: number, sessionToken: string): Ad
                     end
                 end
 
+                if self._chaos and math.random() < self._chaosChance then
+                    error("SIMULATED_CHAOS_FAILURE")
+                end
+
                 doc.session = {
                     token = sessionToken,
                     lastSeen = now,
                 }
 
                 self:_applyMigrations(doc)
+
+                if self._crypto then
+                    pcall(function() decryptFields(self, doc) end)
+                end
 
                 return doc
             end)
@@ -137,6 +203,9 @@ function DataLayer:SaveDocumentAsync(userId: number, sessionToken: string, doc: 
             return self._ds:UpdateAsync(key, function(current: any?)
                 local now = os.time()
                 current = current or newDocument(cfg)
+                if self._chaos and math.random() < self._chaosChance then
+                    error("SIMULATED_CHAOS_FAILURE")
+                end
 
                 local session = current.session
                 if not session or session.token ~= sessionToken or (now - (session.lastSeen or 0)) > ttl then
@@ -148,6 +217,10 @@ function DataLayer:SaveDocumentAsync(userId: number, sessionToken: string, doc: 
                 local d: any = doc
                 d.session = session
                 d.updatedAt = now
+
+                if self._crypto then
+                    pcall(function() encryptFields(self, d) end)
+                end
 
                 return d
             end)
@@ -183,6 +256,9 @@ function DataLayer:PeekDocumentAsync(userId: number): AdapterResult<Document>
             doc = newDocument(cfg)
         else
             self:_applyMigrations(doc)
+            if self._crypto then
+                pcall(function() decryptFields(self, doc) end)
+            end
         end
 
         return true, doc :: Document, nil
