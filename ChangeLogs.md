@@ -9,7 +9,6 @@ All notable changes to SlotCore are documented in this file.
 - Pluggable persistence adapters: `MemoryAdapter`, `FileAdapter` (Studio offline JSON), and `MirrorAdapter` (best-effort mirror writes to a secondary DataStore).
 - Dev-grade crypto adapter: `CryptoAdapter` (XOR/JSON obfuscator) for testing.
 - Production-style crypto wrapper: `CryptoAdapterAES`
-- `CRYPTO.md` documentation with guidance for key management and migration.
 - `WebhookLogger` and `MetricsExporter` adapters for structured log forwarding and in-memory metrics collection.
 - `BadgeIntegration` and `DevProductIntegration` modules for easy wiring of achievements and dev-product handlers to SlotCore stores.
 - `SlotSelect` client UI module - a small built-in slot selection screen that fires a RemoteEvent.
