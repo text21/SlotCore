@@ -9,23 +9,23 @@ Version: 1.1 - Released 2025-11-26
 Highlights (v1.1) (Release version is still useable)
 
 - Pluggable persistence adapters: `MemoryAdapter`, `FileAdapter` (Studio JSON), and `MirrorAdapter`.
-- Webhook logging and a simple metrics exporter adapter.
+- Webhook logging (`WebhookLogger`) and a simple metrics exporter (`MetricsExporter`).
 - Badge and DevProduct integration helpers.
-- Test harness improvements and a small client `SlotSelect` UI module.
+- Test harness improvements
 - Default autosave (15s) with configurable interval; leaderboards improvements and on-demand rank lookup.
 
 ## Core Features
 
-- Multi-slot saves out of the box (`1`, `2`, `3`, …)
-- Session locking to prevent concurrent server write conflicts
-- Adapter-based persistence (DataLayer, MemoryAdapter, FileAdapter, MirrorAdapter)
-- Migrations to evolve document shape without wipes
-- Middleware pipeline (`beforeLoad`, `afterLoad`, `beforeSave`, `afterSave`)
-- Validators (anti-exploit, rate-limit checks, data sanity)
-- Achievements & hooks (`AchievementUnlocked`, `LevelUp`, `StatChanged`)
-- Leaderstats binder + GlobalStatsService (ordered datastore leaderboards)
-- Optional Conch admin integration for in-game inspection & editing
-- Test harness helpers for local/session testing
+- **Multi-slot saves** out of the box (`"1"`, `"2"`, `"3"`, …)
+- **Session locking** to prevent concurrent server write conflicts
+- **Adapter-based persistence** (DataLayer, MemoryAdapter, FileAdapter, MirrorAdapter)
+- **Migrations** to evolve document shape without wipes
+- **Middleware pipeline** (`beforeLoad`, `afterLoad`, `beforeSave`, `afterSave`)
+- **Validators** (anti-exploit, rate-limit checks, data sanity)
+- **Achievements & hooks** (`AchievementUnlocked`, `LevelUp`, `StatChanged`)
+- **Leaderstats binder** + `GlobalStatsService` (OrderedDataStore leaderboards)
+- **Optional Conch admin integration** for in-game inspection & editing
+- **Test harness** helpers for local/session testing
 
 ---
 
@@ -36,7 +36,7 @@ You can either:
 - **Import the `.rbxm`** (attached below), or
 - **Install from GitHub / Wally** (see repository for setup)
 
-RBXM: _[SlotCore.rbxm|attachment](upload://RFStEY1pTaE63rQo47QPcBolyL.rbxm) (183.9 KB)_
+RBXM: In Releases
 
 GitHub:
 https://github.com/text21/SlotCore
@@ -81,9 +81,16 @@ Client snippet (abridged):
 ```lua
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SlotCoreClient = require(ReplicatedStorage.SlotCore.client.SlotCoreClient)
+
 local net = SlotCoreClient.ForStore("Main")
 
 local slots = net:GetSlotsAsync()
+print("Slots:", slots)
+
+net.SlotLoaded:Connect(function(slotId, meta)
+	print("Slot loaded client-side:", slotId, meta and meta.level)
+end)
+
 net:LoadSlotAsync("1")
 ```
 
@@ -117,25 +124,31 @@ Notes:
 You can register custom sinks with `Logger.registerAdapter(name, fn)`. Example wiring `WebhookLogger` and `MetricsExporter`:
 
 ```lua
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Logger = require(ReplicatedStorage.SlotCore.Logger)
-local WebhookImpl = require(ReplicatedStorage.SlotCore.loggers.WebhookLogger)
-local MetricsImpl = require(ReplicatedStorage.SlotCore.loggers.MetricsExporter)
+local WebhookImpl = require(ReplicatedStorage.SlotCore.WebhookLogger)
+local MetricsImpl = require(ReplicatedStorage.SlotCore.MetricsExporter)
 
-local webhook = WebhookImpl.new({ url = "https://hooks.example.com/push", authHeader = "Bearer token" })
-local metrics = MetricsImpl.new({ flushFn = function(k,v) print("FLUSH", k, v) end })
+local webhook = WebhookImpl.new({
+    url = "https://hooks.example.com/push",
+    authHeader = "Bearer token",
+})
 
--- Adapter that forwards Level+Message to webhook and increments a counter
+local metrics = MetricsImpl.new({
+    flushFn = function(key, value)
+        print("METRIC", key, value)
+    end,
+})
+
 Logger.registerAdapter("webhook", function(level, msg)
 	webhook:log(level, msg, { source = "SlotCore" })
 	metrics:inc("logs_total")
 end)
 
--- Example: increment saves counter on store save
 store.SlotSaved:Connect(function(player, handle)
 	metrics:inc("saves")
 end)
 
--- Read values from the metrics exporter anywhere in your server tools
 local counters = metrics:getCounters()
 print("Saves so far:", counters["saves"])
 ```
@@ -154,23 +167,26 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local existing = MarketplaceService.ProcessReceipt
 
 local function makeCompositeHandler(store, handlers)
-	-- handlers: map productId -> function(playerId, receipt, store) -> boolean (granted)
+	-- handlers: { [productId] = function(userId, receipt, store) -> boolean (granted) }
 	return function(receiptInfo)
-		local productId = receiptInfo.ProductId or receiptInfo.PurchaseId
+		local productId = receiptInfo.ProductId
 		local playerId = receiptInfo.PlayerId
 
 		local granted = false
 		local handler = handlers[productId]
 		if handler then
-			local ok, res = pcall(function() return handler(playerId, receiptInfo, store) end)
+			local ok, res = pcall(function()
+				return handler(playerId, receiptInfo, store)
+			end)
 			if ok and res then
 				granted = true
 			end
 		end
 
-		-- call existing handler if present (preserve behavior)
 		if existing then
-			local ok2, decision = pcall(function() return existing(receiptInfo) end)
+			local ok2, decision = pcall(function()
+				return existing(receiptInfo)
+			end)
 			if ok2 and decision == Enum.ProductPurchaseDecision.PurchaseGranted then
 				granted = true
 			end
@@ -183,11 +199,8 @@ local function makeCompositeHandler(store, handlers)
 	end
 end
 
--- Usage
-local DevProductIntegration = require(ReplicatedStorage.SlotCore.integrations.DevProductIntegration)
 local handlers = {
 	[123456] = function(userId, receipt, store)
-		-- give 100 coins to the buyer
 		local player = game:GetService("Players"):GetPlayerByUserId(userId)
 		if player then
 			store:IncrementAsync(player, "coins", 100)
